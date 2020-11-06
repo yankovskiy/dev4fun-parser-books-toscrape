@@ -4,34 +4,56 @@ const fs = require('fs');
 
 const data = [];
 
-async function parse(url) {
+/**
+ * @param {string} url - ссылка для парсинга
+ * @param {boolean} isDetailed - истина, если парсим страницу с карточкой товара
+ * @return {Promise<void>}
+ */
+async function parse(url, isDetailed) {
     try {
-        console.log(`Обработка страницы ${url}`);
         const dom = await JSDOM.fromURL(url);
         const d = dom.window.document;
-        const books = d.querySelectorAll('article.product_pod');
-        books.forEach( book => {
-            let bookName = book.querySelector('h3 > a').getAttribute('title');
-            let bookPrice = book.querySelector('p.price_color').textContent;
-            data.push({name: bookName, price: bookPrice});
-        });
 
-        const next = d.querySelector('li.next > a');
-        if (next) {
-            const nextUrl = 'https://books.toscrape.com/catalogue/' + next.getAttribute('href');
-            q.push(nextUrl);
+        if (!isDetailed) {
+            console.log(`Обработка страницы ${url}`);
+            const books = d.querySelectorAll('article.product_pod');
+            books.forEach(book => {
+                const link = book.querySelector('h3 > a');
+                if (link) {
+                    const detailedUrl = 'https://books.toscrape.com/catalogue/' + link.getAttribute('href');
+                    q.push({url: detailedUrl, isDetailed: true});
+                }
+            });
+
+            const next = d.querySelector('li.next > a');
+            if (next) {
+                const nextUrl = 'https://books.toscrape.com/catalogue/' + next.getAttribute('href');
+                q.push({url: nextUrl, isDetailed: false});
+            }
+        } else {
+            console.log(`Обработка карточки товара ${url}`);
+            const bookName = d.querySelector('h1').textContent;
+            const bookPrice = d.querySelector('p.price_color').textContent;
+
+            let bookDescription = '';
+            const desc = d.querySelector("#content_inner > article > p");
+            if (desc) {
+                bookDescription = desc.textContent;
+            }
+
+            data.push({name: bookName, price: bookPrice, description: bookDescription});
         }
     } catch (e) {
-        console.log(e);
+        console.error(e);
     }
 }
 
-const q = queue(async (url, done) => {
-    await parse(url);
+const q = queue(async (data, done) => {
+    await parse(data.url, data.isDetailed);
     done();
 } );
 
-q.push('https://books.toscrape.com/catalogue/page-1.html');
+q.push({url: 'https://books.toscrape.com/catalogue/page-1.html', isDetailed: false});
 
 (async () => {
     await q.drain();
